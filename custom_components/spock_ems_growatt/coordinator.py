@@ -1,5 +1,6 @@
 """Coordinador de datos para Spock EMS Growatt."""
 import logging
+import json
 import asyncio
 from datetime import timedelta
 from typing import Any, Dict
@@ -132,6 +133,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             _LOGGER.debug("Datos Modbus LEÍDOS: %s", data)
 
             spock_payload = {
+                # Aseguramos conversion a String, igual que en SMA
                 "plant_id": str(self.entry_data[CONF_SPOCK_PLANT_ID]),
                 "bat_soc": to_int_str_or_none(data.get("battery_soc_total")),
                 "bat_power": to_int_str_or_none(data.get("battery_power")),
@@ -143,8 +145,6 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                 "total_grid_output_energy": to_int_str_or_none(data.get("supply_power")),
             }
 
-            _LOGGER.debug("Payload enviando a SPOCK: %s", spock_payload)
-
             await self._send_to_spock(spock_payload)
             return data
 
@@ -154,17 +154,22 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error inesperado: {err}")
 
     async def _send_to_spock(self, payload):
-        # CORRECCIÓN CLAVE: Usamos 'X-Auth-Token' en lugar de 'Authorization'
-        # Esto coincide exactamente con cómo lo hace el módulo de SMA
+        # Cabeceras exactas a SMA
         headers = {
             "X-Auth-Token": self.entry_data[CONF_SPOCK_API_TOKEN],
             "Content-Type": "application/json"
         }
         
+        # Serialización manual (json.dumps) para garantizar el formato de string
+        serialized_payload = json.dumps(payload)
+        
+        _LOGGER.debug("Enviando a Spock (RAW BODY): %s", serialized_payload)
+
         try:
+            # Usamos 'data=' en lugar de 'json=', igual que en SMA, para control total
             async with self.http_session.post(
                 SPOCK_TELEMETRY_API_ENDPOINT,
-                json=payload,
+                data=serialized_payload, 
                 headers=headers,
                 timeout=10
             ) as resp:
