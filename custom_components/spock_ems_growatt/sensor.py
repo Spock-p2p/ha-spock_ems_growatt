@@ -1,18 +1,8 @@
+"""Plataforma de sensores para Growatt Spock."""
 from homeassistant.components.sensor import SensorEntity
-from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
-from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from .const import DOMAIN, CONF_INVERTER_IP
 
-from .const import DOMAIN
-
-async def async_setup_entry(
-    hass: HomeAssistant, 
-    entry: ConfigEntry, 
-    async_add_entities: AddEntitiesCallback
-) -> None:
-    """Configura los sensores desde la Config Entry."""
-    
-    # Recuperamos el coordinador desde la estructura definida en __init__.py
+async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     
     entities = [
@@ -29,12 +19,11 @@ class GrowattSpockSensor(SensorEntity):
         self._name = name
         self._key = key
         self._unit = unit
+        self._ip = coordinator.entry_data[CONF_INVERTER_IP]
 
     @property
     def unique_id(self):
-        """ID único combinando IP del inversor y clave del sensor."""
-        ip = self.coordinator.entry_data["inverter_ip"]
-        return f"growatt_{ip}_{self._key}"
+        return f"growatt_{self._ip}_{self._key}"
 
     @property
     def name(self):
