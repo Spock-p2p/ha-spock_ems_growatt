@@ -1,4 +1,4 @@
-"""Config flow para Growatt Spock EMS."""
+"""Config flow para Spock EMS Growatt."""
 import logging
 import voluptuous as vol
 from homeassistant import config_entries
@@ -7,7 +7,6 @@ from pymodbus.client import ModbusTcpClient
 
 from .const import (
     DOMAIN,
-    CONF_SPOCK_ID,
     CONF_SPOCK_API_TOKEN,
     CONF_SPOCK_PLANT_ID,
     CONF_INVERTER_IP,
@@ -19,8 +18,8 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+# Schema sin spock_id
 DATA_SCHEMA = vol.Schema({
-    vol.Required(CONF_SPOCK_ID): str,
     vol.Required(CONF_SPOCK_API_TOKEN): str,
     vol.Required(CONF_SPOCK_PLANT_ID): str,
     vol.Required(CONF_INVERTER_IP): str,
@@ -34,8 +33,6 @@ class CannotConnect(Exception):
 async def validate_input(hass, data: dict):
     """Valida la conexión Modbus TCP."""
     client = ModbusTcpClient(data[CONF_INVERTER_IP], port=data[CONF_MODBUS_PORT])
-    
-    # Ejecutar connect en executor porque es bloqueante
     is_connected = await hass.async_add_executor_job(client.connect)
     client.close()
     
@@ -89,7 +86,6 @@ class GrowattSpockOptionsFlow(config_entries.OptionsFlow):
 
         current = self.config_entry.data
         schema = vol.Schema({
-            vol.Required(CONF_SPOCK_ID, default=current.get(CONF_SPOCK_ID)): str,
             vol.Required(CONF_SPOCK_API_TOKEN, default=current.get(CONF_SPOCK_API_TOKEN)): str,
             vol.Required(CONF_SPOCK_PLANT_ID, default=current.get(CONF_SPOCK_PLANT_ID)): str,
             vol.Required(CONF_INVERTER_IP, default=current.get(CONF_INVERTER_IP)): str,
