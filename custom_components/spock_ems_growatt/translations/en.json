@@ -1,23 +1,22 @@
 {
     "config": {
         "abort": {
-            "already_configured": "This device is already configured."
+            "already_configured": "Device already configured"
         },
         "error": {
-            "cannot_connect": "Failed to connect to the Inverter. Check IP and Port.",
-            "unknown": "Unexpected error."
+            "cannot_connect": "Failed to connect to Inverter (Modbus TCP)",
+            "unknown": "Unexpected error"
         },
         "step": {
             "user": {
-                "title": "Connect to Growatt Inverter",
-                "description": "Enter Spock credentials and Inverter Modbus details.",
+                "title": "Configure Growatt Spock EMS",
                 "data": {
                     "spock_id": "Spock Organization ID",
                     "spock_api_token": "Spock API Token",
                     "spock_plant_id": "Spock Plant ID",
                     "inverter_ip": "Inverter IP Address",
-                    "modbus_port": "Modbus Port (Default 502)",
-                    "modbus_id": "Modbus Unit ID (Slave ID)"
+                    "modbus_port": "Modbus Port",
+                    "modbus_id": "Modbus Unit ID"
                 }
             }
         }
@@ -25,7 +24,7 @@
     "options": {
         "step": {
             "init": {
-                "title": "Reconfigure Growatt Spock",
+                "title": "Reconfigure Growatt Parameters",
                 "data": {
                     "spock_id": "Spock Organization ID",
                     "spock_api_token": "Spock API Token",
@@ -37,8 +36,8 @@
             }
         },
         "error": {
-            "cannot_connect": "Failed to connect to the Inverter.",
-            "unknown": "Unexpected error."
+            "cannot_connect": "Failed to connect to Inverter",
+            "unknown": "Unexpected error"
         }
     }
 }
