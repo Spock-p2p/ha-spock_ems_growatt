@@ -1,23 +1,22 @@
 {
     "config": {
         "abort": {
-            "already_configured": "Este dispositivo ya está configurado."
+            "already_configured": "El dispositivo ya está configurado"
         },
         "error": {
-            "cannot_connect": "No se pudo conectar al Inversor. Verifica IP y Puerto.",
-            "unknown": "Error inesperado."
+            "cannot_connect": "Fallo al conectar con el Inversor (Modbus TCP)",
+            "unknown": "Error inesperado"
         },
         "step": {
             "user": {
-                "title": "Conectar Inversor Growatt",
-                "description": "Introduce las credenciales de Spock y datos Modbus del inversor.",
+                "title": "Configurar Growatt Spock EMS",
                 "data": {
                     "spock_id": "ID Organización Spock",
                     "spock_api_token": "Token API Spock",
                     "spock_plant_id": "ID Planta Spock",
                     "inverter_ip": "IP del Inversor",
-                    "modbus_port": "Puerto Modbus (Defecto 502)",
-                    "modbus_id": "ID Modbus (Slave ID)"
+                    "modbus_port": "Puerto Modbus",
+                    "modbus_id": "ID Unidad Modbus"
                 }
             }
         }
@@ -25,20 +24,20 @@
     "options": {
         "step": {
             "init": {
-                "title": "Reconfigurar Growatt Spock",
+                "title": "Reconfigurar Parámetros Growatt",
                 "data": {
                     "spock_id": "ID Organización Spock",
                     "spock_api_token": "Token API Spock",
                     "spock_plant_id": "ID Planta Spock",
                     "inverter_ip": "IP del Inversor",
                     "modbus_port": "Puerto Modbus",
-                    "modbus_id": "ID Modbus (Slave ID)"
+                    "modbus_id": "ID Unidad Modbus"
                 }
             }
         },
         "error": {
-            "cannot_connect": "No se pudo conectar al Inversor.",
-            "unknown": "Error inesperado."
+            "cannot_connect": "Fallo al conectar con el Inversor",
+            "unknown": "Error inesperado"
         }
     }
 }
