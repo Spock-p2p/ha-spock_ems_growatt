@@ -63,23 +63,15 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
         return u16 - 0x10000 if (u16 & 0x8000) else u16
 
     def _read_robust(self, func, address, count):
-        """
-        Mecanismo de lectura UNIVERSAL (Estilo SMA Robust).
-        Prueba 'device_id' (v3.11+), luego 'slave' (v3.0), luego 'unit' (v2.x).
-        """
-        # Intento 1: Estándar actual (v3.11+) - El que usa tu script get_status.py
+        """Mecanismo de lectura UNIVERSAL (Estilo SMA Robust)."""
         try:
             return func(address, count=count, device_id=self.modbus_id)
         except TypeError:
-            pass # Si falla, probamos el siguiente
-
-        # Intento 2: Estándar intermedio (v3.0 - v3.10)
+            pass
         try:
             return func(address, count=count, slave=self.modbus_id)
         except TypeError:
             pass
-
-        # Intento 3: Estándar antiguo (v2.x)
         return func(address, count=count, unit=self.modbus_id)
 
     def _read_modbus_sync(self) -> Dict[str, Any]:
@@ -89,7 +81,6 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
 
         # 1. Potencia Nominal
         if self.nominal_power_w is None:
-            # Usamos _read_robust para olvidarnos de versiones
             hr = self._read_robust(self.client.read_holding_registers, 10, 1)
             if not hr.isError():
                 val = hr.registers[0]
@@ -137,6 +128,9 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
         try:
             data = await self.hass.async_add_executor_job(self._read_modbus_sync)
             
+            # --- LOG DE DATOS CRUDOS ---
+            _LOGGER.debug("Datos Modbus LEÍDOS: %s", data)
+
             spock_payload = {
                 "plant_id": str(self.entry_data[CONF_SPOCK_PLANT_ID]),
                 "bat_soc": to_int_str_or_none(data.get("battery_soc_total")),
@@ -148,6 +142,9 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                 "bat_capacity": "0",
                 "total_grid_output_energy": to_int_str_or_none(data.get("supply_power")),
             }
+
+            # --- LOG DEL PAYLOAD ---
+            _LOGGER.debug("Payload enviando a SPOCK: %s", spock_payload)
 
             await self._send_to_spock(spock_payload)
             return data
