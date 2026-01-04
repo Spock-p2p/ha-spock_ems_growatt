@@ -95,7 +95,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                      val = self._decode_u32_be(ir.registers)
                      self.nominal_power_w = val * 0.1 / 1000.0
 
-        # 2. Telemetría - CON REDONDEO A ENTEROS
+        # 2. Telemetría
         ir_pv = self._read_robust(self.client.read_input_registers, 3001, 2)
         if ir_pv.isError(): raise ModbusException("Error leyendo PV Power (3001)")
         pv_p = int(round(self._decode_u32_be(ir_pv.registers) * 0.1))
@@ -131,10 +131,19 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             data = await self.hass.async_add_executor_job(self._read_modbus_sync)
             
             _LOGGER.debug("Datos Modbus LEÍDOS: %s", data)
+            
+            # Limpiamos el ID de posibles espacios y lo convertimos a entero
+            raw_plant_id = str(self.entry_data[CONF_SPOCK_PLANT_ID]).strip()
+            
+            # Intento de conversión robusta a entero para el payload
+            try:
+                plant_id_val = int(raw_plant_id)
+            except ValueError:
+                # Si falla (ej: es alfanumérico), lo mandamos como string limpio
+                plant_id_val = raw_plant_id
 
             spock_payload = {
-                # Aseguramos conversion a String, igual que en SMA
-                "plant_id": str(self.entry_data[CONF_SPOCK_PLANT_ID]),
+                "plant_id": plant_id_val,  # <--- Enviamos INT o String limpio
                 "bat_soc": to_int_str_or_none(data.get("battery_soc_total")),
                 "bat_power": to_int_str_or_none(data.get("battery_power")),
                 "pv_power": to_int_str_or_none(data.get("pv_power")),
@@ -154,19 +163,16 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error inesperado: {err}")
 
     async def _send_to_spock(self, payload):
-        # Cabeceras exactas a SMA
         headers = {
-            "X-Auth-Token": self.entry_data[CONF_SPOCK_API_TOKEN],
+            "X-Auth-Token": self.entry_data[CONF_SPOCK_API_TOKEN].strip(), # Limpiamos también el token
             "Content-Type": "application/json"
         }
         
-        # Serialización manual (json.dumps) para garantizar el formato de string
         serialized_payload = json.dumps(payload)
         
         _LOGGER.debug("Enviando a Spock (RAW BODY): %s", serialized_payload)
 
         try:
-            # Usamos 'data=' en lugar de 'json=', igual que en SMA, para control total
             async with self.http_session.post(
                 SPOCK_TELEMETRY_API_ENDPOINT,
                 data=serialized_payload, 
@@ -183,7 +189,6 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                 try:
                     data = await resp.json(content_type=None)
                     _LOGGER.debug("Respuesta de Spock: %s", data)
-                    
                 except Exception as e:
                     _LOGGER.warning("Spock respondió 200 OK pero no es JSON válido: %s", response_text)
 
