@@ -1,5 +1,6 @@
 """Coordinador de datos para Spock EMS Growatt."""
 import logging
+import json
 import asyncio
 from datetime import timedelta
 from typing import Any, Dict
@@ -18,7 +19,7 @@ from .const import (
     CONF_INVERTER_IP,
     CONF_MODBUS_PORT,
     CONF_MODBUS_ID,
-    SCAN_INTERVAL_SECONDS,  # <--- Única variable de tiempo
+    SCAN_INTERVAL_SECONDS,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -39,7 +40,6 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name="Growatt Spock Coordinator",
-            # Aquí aplicamos el intervalo configurado
             update_interval=timedelta(seconds=SCAN_INTERVAL_SECONDS),
         )
         self.http_session = http_session
@@ -50,7 +50,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
         self.client = ModbusTcpClient(
             host=entry_data[CONF_INVERTER_IP],
             port=int(entry_data[CONF_MODBUS_PORT]),
-            timeout=5  # Timeout fijo interno (robusto)
+            timeout=5
         )
         self.nominal_power_w = None
 
@@ -96,19 +96,15 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                      self.nominal_power_w = val * 0.1 / 1000.0
 
         # 2. Telemetría - CON REDONDEO A ENTEROS
-        
-        # PV Power (3001)
         ir_pv = self._read_robust(self.client.read_input_registers, 3001, 2)
         if ir_pv.isError(): raise ModbusException("Error leyendo PV Power (3001)")
         pv_p = int(round(self._decode_u32_be(ir_pv.registers) * 0.1))
 
-        # Grid Power (3048)
         ir_grid = self._read_robust(self.client.read_input_registers, 3048, 1)
         if ir_grid.isError(): raise ModbusException("Error leyendo Grid Power (3048)")
         grid_raw = self._decode_s16(ir_grid.registers[0]) * 0.1
         net_grid_p = int(round(abs(grid_raw) * 3.73))
 
-        # SOC (3010)
         ir_soc = self._read_robust(self.client.read_input_registers, 3010, 1)
         soc = ir_soc.registers[0] if not ir_soc.isError() else 0
         if soc == 0:
@@ -116,7 +112,6 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             if not ir_soc_bms.isError():
                 soc = ir_soc_bms.registers[0]
 
-        # Batería (3178)
         ir_bat = self._read_robust(self.client.read_input_registers, 3178, 4)
         if ir_bat.isError(): raise ModbusException("Error leyendo Batería (3178)")
         pdis_w = self._decode_u32_be(ir_bat.registers[0:2]) * 0.1
@@ -161,7 +156,8 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
 
     async def _send_to_spock(self, payload):
         headers = {
-            "Authorization": f"Bearer {self.entry_data[CONF_SPOCK_API_TOKEN]}"
+            "Authorization": f"Bearer {self.entry_data[CONF_SPOCK_API_TOKEN]}",
+            "Content-Type": "application/json"
         }
         
         try:
@@ -169,9 +165,26 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                 SPOCK_TELEMETRY_API_ENDPOINT,
                 json=payload,
                 headers=headers,
-                timeout=10 # Timeout fijo interno (robusto)
+                timeout=10
             ) as resp:
+                
+                # --- LEER RESPUESTA (Igual que en SMA) ---
+                response_text = await resp.text()
+                
                 if resp.status != 200:
-                    _LOGGER.warning("Spock API respondió con error: %s", resp.status)
+                    _LOGGER.error("Error HTTP Spock (%s): %s", resp.status, response_text)
+                    return # Salimos si hay error
+                
+                # Si es 200, intentamos parsear JSON para debug y futuras órdenes
+                try:
+                    data = await resp.json(content_type=None)
+                    _LOGGER.debug("Respuesta de Spock: %s", data)
+                    
+                    # AQUÍ IRÁ LA LÓGICA DE CONTROL DE BATERÍA (FUTURO)
+                    # if data.get("operation_mode") ...
+                    
+                except Exception as e:
+                    _LOGGER.warning("Spock respondió 200 OK pero no es JSON válido: %s", response_text)
+
         except ClientError as err:
             _LOGGER.error("Error de conexión con Spock API: %s", err)
