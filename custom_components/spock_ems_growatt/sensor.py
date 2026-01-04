@@ -1,8 +1,19 @@
 from homeassistant.components.sensor import SensorEntity
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
+
 from .const import DOMAIN
 
-async def async_setup_entry(hass, entry, async_add_entities):
-    coordinator = hass.data[DOMAIN][entry.entry_id]
+async def async_setup_entry(
+    hass: HomeAssistant, 
+    entry: ConfigEntry, 
+    async_add_entities: AddEntitiesCallback
+) -> None:
+    """Configura los sensores desde la Config Entry."""
+    
+    # Recuperamos el coordinador desde la estructura definida en __init__.py
+    coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
     
     entities = [
         GrowattSpockSensor(coordinator, "PV Power", "pv_power", "W"),
@@ -20,16 +31,26 @@ class GrowattSpockSensor(SensorEntity):
         self._unit = unit
 
     @property
-    def name(self): return f"Growatt Spock {self._name}"
+    def unique_id(self):
+        """ID único combinando IP del inversor y clave del sensor."""
+        ip = self.coordinator.entry_data["inverter_ip"]
+        return f"growatt_{ip}_{self._key}"
 
     @property
-    def state(self): return self.coordinator.data.get(self._key)
+    def name(self):
+        return f"Growatt Spock {self._name}"
 
     @property
-    def unit_of_measurement(self): return self._unit
+    def state(self):
+        return self.coordinator.data.get(self._key)
 
     @property
-    def should_poll(self): return False
+    def unit_of_measurement(self):
+        return self._unit
+
+    @property
+    def should_poll(self):
+        return False
 
     async def async_added_to_hass(self):
         self.async_on_remove(self.coordinator.async_add_listener(self.async_write_ha_state))
