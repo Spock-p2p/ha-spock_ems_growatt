@@ -26,6 +26,7 @@ def to_int_str_or_none(value):
     if value is None:
         return None
     try:
+        # Aunque ya vienen enteros, mantenemos esto por seguridad ante Nones
         return str(int(round(float(value))))
     except (ValueError, TypeError):
         return None
@@ -93,16 +94,20 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                      val = self._decode_u32_be(ir.registers)
                      self.nominal_power_w = val * 0.1 / 1000.0
 
-        # 2. Telemetría
+        # 2. Telemetría - APLICAMOS REDONDEO A ENTEROS AQUÍ
+        
+        # PV Power (3001)
         ir_pv = self._read_robust(self.client.read_input_registers, 3001, 2)
         if ir_pv.isError(): raise ModbusException("Error leyendo PV Power (3001)")
-        pv_p = self._decode_u32_be(ir_pv.registers) * 0.1
+        pv_p = int(round(self._decode_u32_be(ir_pv.registers) * 0.1))
 
+        # Grid Power (3048)
         ir_grid = self._read_robust(self.client.read_input_registers, 3048, 1)
         if ir_grid.isError(): raise ModbusException("Error leyendo Grid Power (3048)")
         grid_raw = self._decode_s16(ir_grid.registers[0]) * 0.1
-        net_grid_p = abs(grid_raw) * 3.73
+        net_grid_p = int(round(abs(grid_raw) * 3.73)) # Redondeo tras aplicar factor trifásico
 
+        # SOC (3010)
         ir_soc = self._read_robust(self.client.read_input_registers, 3010, 1)
         soc = ir_soc.registers[0] if not ir_soc.isError() else 0
         if soc == 0:
@@ -110,14 +115,15 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             if not ir_soc_bms.isError():
                 soc = ir_soc_bms.registers[0]
 
+        # Batería (3178)
         ir_bat = self._read_robust(self.client.read_input_registers, 3178, 4)
         if ir_bat.isError(): raise ModbusException("Error leyendo Batería (3178)")
         pdis_w = self._decode_u32_be(ir_bat.registers[0:2]) * 0.1
         pch_w = self._decode_u32_be(ir_bat.registers[2:4]) * 0.1
-        bat_p = pch_w - pdis_w
+        bat_p = int(round(pch_w - pdis_w))
 
         return {
-            "battery_soc_total": soc,
+            "battery_soc_total": int(soc),
             "battery_power": bat_p,
             "pv_power": pv_p,
             "net_grid_power": net_grid_p,
@@ -128,7 +134,6 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
         try:
             data = await self.hass.async_add_executor_job(self._read_modbus_sync)
             
-            # --- LOG DE DATOS CRUDOS ---
             _LOGGER.debug("Datos Modbus LEÍDOS: %s", data)
 
             spock_payload = {
@@ -143,7 +148,6 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                 "total_grid_output_energy": to_int_str_or_none(data.get("supply_power")),
             }
 
-            # --- LOG DEL PAYLOAD ---
             _LOGGER.debug("Payload enviando a SPOCK: %s", spock_payload)
 
             await self._send_to_spock(spock_payload)
