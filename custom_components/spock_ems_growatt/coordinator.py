@@ -61,45 +61,55 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
     def _decode_s16(self, u16):
         return u16 - 0x10000 if (u16 & 0x8000) else u16
 
+    def _read_safe(self, func, address, count):
+        """
+        Intenta leer usando 'slave' (v3.x). 
+        Si falla con TypeError, reintenta con 'unit' (v2.x).
+        Esto hace el código indestructible ante versiones de librerías.
+        """
+        try:
+            return func(address, count=count, slave=self.modbus_id)
+        except TypeError:
+            # Fallback para entornos donde 'slave' no es reconocido
+            return func(address, count=count, unit=self.modbus_id)
+
     def _read_modbus_sync(self) -> Dict[str, Any]:
         """Lectura síncrona de registros Modbus."""
         if not self.client.connect():
             raise ConnectionError("No se pudo establecer conexión TCP con el inversor")
-
-        # Con pymodbus >= 3.6.0 usamos 'slave'
         
         # 1. Potencia Nominal
         if self.nominal_power_w is None:
-            hr = self.client.read_holding_registers(10, count=1, slave=self.modbus_id)
+            hr = self._read_safe(self.client.read_holding_registers, 10, 1)
             if not hr.isError():
                 val = hr.registers[0]
                 if 5000 <= val <= 7000: self.nominal_power_w = val / 1000.0
                 elif 50000 <= val <= 70000: self.nominal_power_w = val / 10000.0
             
             if self.nominal_power_w is None:
-                 ir = self.client.read_input_registers(3005, count=2, slave=self.modbus_id)
+                 ir = self._read_safe(self.client.read_input_registers, 3005, 2)
                  if not ir.isError():
                      val = self._decode_u32_be(ir.registers)
                      self.nominal_power_w = val * 0.1 / 1000.0
 
         # 2. Telemetría
-        ir_pv = self.client.read_input_registers(3001, count=2, slave=self.modbus_id)
+        ir_pv = self._read_safe(self.client.read_input_registers, 3001, 2)
         if ir_pv.isError(): raise ModbusException("Error leyendo PV Power")
         pv_p = self._decode_u32_be(ir_pv.registers) * 0.1
 
-        ir_grid = self.client.read_input_registers(3048, count=1, slave=self.modbus_id)
+        ir_grid = self._read_safe(self.client.read_input_registers, 3048, 1)
         if ir_grid.isError(): raise ModbusException("Error leyendo Grid Power")
         grid_raw = self._decode_s16(ir_grid.registers[0]) * 0.1
         net_grid_p = abs(grid_raw) * 3.73
 
-        ir_soc = self.client.read_input_registers(3010, count=1, slave=self.modbus_id)
+        ir_soc = self._read_safe(self.client.read_input_registers, 3010, 1)
         soc = ir_soc.registers[0] if not ir_soc.isError() else 0
         if soc == 0:
-            ir_soc_bms = self.client.read_input_registers(3171, count=1, slave=self.modbus_id)
+            ir_soc_bms = self._read_safe(self.client.read_input_registers, 3171, 1)
             if not ir_soc_bms.isError():
                 soc = ir_soc_bms.registers[0]
 
-        ir_bat = self.client.read_input_registers(3178, count=4, slave=self.modbus_id)
+        ir_bat = self._read_safe(self.client.read_input_registers, 3178, 4)
         if ir_bat.isError(): raise ModbusException("Error leyendo Batería")
         pdis_w = self._decode_u32_be(ir_bat.registers[0:2]) * 0.1
         pch_w = self._decode_u32_be(ir_bat.registers[2:4]) * 0.1
@@ -138,6 +148,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error inesperado: {err}")
 
     async def _send_to_spock(self, payload):
+        """Envía telemetría a la API de Spock."""
         headers = {
             "Authorization": f"Bearer {self.entry_data[CONF_SPOCK_API_TOKEN]}"
         }
