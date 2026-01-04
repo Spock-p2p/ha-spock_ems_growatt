@@ -1,3 +1,4 @@
+"""Inicialización del componente Growatt Spock EMS."""
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -8,52 +9,44 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .const import (
     DOMAIN,
     PLATFORMS,
-    CONF_SPOCK_API_TOKEN,
-    CONF_SPOCK_PLANT_ID,
-    CONF_SPOCK_ID,
-    CONF_INVERTER_IP,
-    CONF_MODBUS_PORT,
-    CONF_MODBUS_ID,
-    SPOCK_TELEMETRY_API_ENDPOINT,
 )
 from .coordinator import GrowattSpockCoordinator
 
 _LOGGER = logging.getLogger(__name__)
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Configura la integración desde la Config Entry."""
+    """Configura la integración desde la entrada de configuración."""
     
-    config = entry.data
     hass.data.setdefault(DOMAIN, {})
 
-    # 1. Sesión HTTP compartida de HA (para el PUSH a Spock)
-    # Esto sustituye a 'requests' y es mucho más eficiente
+    # 1. Obtener sesión HTTP asíncrona compartida (Best Practice HA)
+    # Se usará para el PUSH a Spock
     http_session = async_get_clientsession(hass)
 
     # 2. Inicializar el Coordinador
-    # Le pasamos la sesión HTTP y todos los datos necesarios
     coordinator = GrowattSpockCoordinator(
         hass=hass,
         http_session=http_session,
-        entry_data=config
+        entry_data=entry.data
     )
 
-    # 3. Primera carga de datos (PULL Growatt + PUSH Spock)
+    # 3. Primera actualización de datos (Pull Modbus + Push Spock)
+    # Si falla aquí, la integración reintentará en segundo plano
     await coordinator.async_config_entry_first_refresh()
 
-    # 4. Guardar referencia en hass.data
+    # 4. Guardar referencia
     hass.data[DOMAIN][entry.entry_id] = {
         "coordinator": coordinator
     }
 
-    # 5. Registrar plataformas (sensores)
+    # 5. Cargar plataformas (Sensores)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
-    # 6. Manejo de cierre (Shutdown)
+    # 6. Registrar listener para cerrar conexión Modbus al apagar HA
     async def _async_handle_shutdown(event: Event) -> None:
-        """Cierra conexiones al apagar HA."""
-        if coordinator.client:
-            coordinator.client.close()
+        """Cierra el cliente Modbus al detener HA."""
+        _LOGGER.debug("Cerrando conexión Modbus Growatt por parada de HA")
+        coordinator.close_modbus()
 
     entry.async_on_unload(
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, _async_handle_shutdown)
@@ -62,14 +55,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Descarga la integración."""
+    """Descarga la integración y limpia recursos."""
     
-    # Recuperamos el coordinador para cerrar conexión Modbus
-    data = hass.data[DOMAIN].get(entry.entry_id)
-    if data:
-        coordinator = data["coordinator"]
-        if coordinator.client:
-            coordinator.client.close()
+    # Cerrar conexión Modbus explícitamente
+    if entry.entry_id in hass.data[DOMAIN]:
+        coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
+        coordinator.close_modbus()
 
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
