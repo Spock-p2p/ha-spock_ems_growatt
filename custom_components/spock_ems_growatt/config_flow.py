@@ -18,7 +18,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
-# Schema sin spock_id
+# Schema
 DATA_SCHEMA = vol.Schema({
     vol.Required(CONF_SPOCK_API_TOKEN): str,
     vol.Required(CONF_SPOCK_PLANT_ID): str,
@@ -33,6 +33,8 @@ class CannotConnect(Exception):
 async def validate_input(hass, data: dict):
     """Valida la conexión Modbus TCP."""
     client = ModbusTcpClient(data[CONF_INVERTER_IP], port=data[CONF_MODBUS_PORT])
+    # pymodbus v3.x connect no es asíncrono nativo en el cliente sync, 
+    # pero lo ejecutamos en el executor por seguridad.
     is_connected = await hass.async_add_executor_job(client.connect)
     client.close()
     
@@ -68,9 +70,9 @@ class GrowattSpockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class GrowattSpockOptionsFlow(config_entries.OptionsFlow):
     """Flujo de reconfiguración (Options)."""
     
-    def __init__(self, config_entry):
-        self.config_entry = config_entry
-
+    # NOTA: Se ha eliminado __init__ para corregir el warning de 'sets option flow config_entry explicitly'.
+    # Home Assistant inyecta self.config_entry automáticamente.
+    
     async def async_step_init(self, user_input=None):
         errors = {}
         if user_input is not None:
