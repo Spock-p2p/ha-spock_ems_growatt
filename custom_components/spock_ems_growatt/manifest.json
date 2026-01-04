@@ -5,7 +5,7 @@
   "documentation": "https://github.com/Spock-p2p/ha-spock_ems_growatt",
   "requirements": [
     "pysma==1.0.2",
-    "pymodbus==3.6.0"
+    "pymodbus>=3.6.0"
   ],
   "dependencies": [
     "http"
