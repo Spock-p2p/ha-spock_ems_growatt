@@ -10,6 +10,10 @@ CONF_INVERTER_IP = "inverter_ip"
 CONF_MODBUS_PORT = "modbus_port"
 CONF_MODBUS_ID = "modbus_id"
 
+# Intervalo de ejecución (en segundos)
+# Este es el tiempo que espera entre lecturas
+SCAN_INTERVAL_SECONDS = 60
+
 # Defaults
 DEFAULT_PORT = 502
 DEFAULT_MODBUS_ID = 1
