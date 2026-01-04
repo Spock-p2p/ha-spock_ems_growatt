@@ -66,6 +66,8 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
         if not self.client.connect():
             raise ConnectionError("No se pudo establecer conexión TCP con el inversor")
 
+        # Con pymodbus >= 3.6.0 usamos 'slave'
+        
         # 1. Potencia Nominal
         if self.nominal_power_w is None:
             hr = self.client.read_holding_registers(10, count=1, slave=self.modbus_id)
@@ -136,8 +138,6 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error inesperado: {err}")
 
     async def _send_to_spock(self, payload):
-        """Envía telemetría a la API de Spock."""
-        # Se ha eliminado Spock-Id. Solo se envía el Token Bearer.
         headers = {
             "Authorization": f"Bearer {self.entry_data[CONF_SPOCK_API_TOKEN]}"
         }
