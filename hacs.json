@@ -1,0 +1,10 @@
+{
+  "name": "Spock EMS (Growatt)",
+  "render_readme": true,
+  "country": "ES",
+  "domains": [
+    "sensor"
+  ],
+  "homeassistant_version": "2024.6.0",
+  "iot_class": "cloud_polling"
+}
