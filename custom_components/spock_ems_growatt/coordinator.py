@@ -1,6 +1,5 @@
 """Coordinador de datos para Spock EMS Growatt."""
 import logging
-import json
 import asyncio
 from datetime import timedelta
 from typing import Any, Dict
@@ -155,8 +154,10 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             raise UpdateFailed(f"Error inesperado: {err}")
 
     async def _send_to_spock(self, payload):
+        # CORRECCIÓN CLAVE: Usamos 'X-Auth-Token' en lugar de 'Authorization'
+        # Esto coincide exactamente con cómo lo hace el módulo de SMA
         headers = {
-            "Authorization": f"Bearer {self.entry_data[CONF_SPOCK_API_TOKEN]}",
+            "X-Auth-Token": self.entry_data[CONF_SPOCK_API_TOKEN],
             "Content-Type": "application/json"
         }
         
@@ -168,20 +169,15 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                 timeout=10
             ) as resp:
                 
-                # --- LEER RESPUESTA (Igual que en SMA) ---
                 response_text = await resp.text()
                 
                 if resp.status != 200:
                     _LOGGER.error("Error HTTP Spock (%s): %s", resp.status, response_text)
-                    return # Salimos si hay error
+                    return 
                 
-                # Si es 200, intentamos parsear JSON para debug y futuras órdenes
                 try:
                     data = await resp.json(content_type=None)
                     _LOGGER.debug("Respuesta de Spock: %s", data)
-                    
-                    # AQUÍ IRÁ LA LÓGICA DE CONTROL DE BATERÍA (FUTURO)
-                    # if data.get("operation_mode") ...
                     
                 except Exception as e:
                     _LOGGER.warning("Spock respondió 200 OK pero no es JSON válido: %s", response_text)
