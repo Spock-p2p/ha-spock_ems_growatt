@@ -17,5 +17,5 @@ DEFAULT_MODBUS_ID = 1
 # Endpoint
 SPOCK_TELEMETRY_API_ENDPOINT = "https://ems-ha.spock.es/api/ems_growatt"
 
-# Plataformas soportadas
+# Plataformas
 PLATFORMS = ["sensor"]
