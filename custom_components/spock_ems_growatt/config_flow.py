@@ -33,8 +33,6 @@ class CannotConnect(Exception):
 async def validate_input(hass, data: dict):
     """Valida la conexión Modbus TCP."""
     client = ModbusTcpClient(data[CONF_INVERTER_IP], port=data[CONF_MODBUS_PORT])
-    # pymodbus v3.x connect no es asíncrono nativo en el cliente sync, 
-    # pero lo ejecutamos en el executor por seguridad.
     is_connected = await hass.async_add_executor_job(client.connect)
     client.close()
     
@@ -70,8 +68,7 @@ class GrowattSpockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class GrowattSpockOptionsFlow(config_entries.OptionsFlow):
     """Flujo de reconfiguración (Options)."""
     
-    # NOTA: Se ha eliminado __init__ para corregir el warning de 'sets option flow config_entry explicitly'.
-    # Home Assistant inyecta self.config_entry automáticamente.
+    # Eliminado __init__ para corregir warning de deprecación.
     
     async def async_step_init(self, user_input=None):
         errors = {}
