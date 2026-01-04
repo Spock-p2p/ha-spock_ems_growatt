@@ -1,9 +1,9 @@
-"""Constantes para la integración Growatt Spock EMS."""
+"""Constantes para la integración Spock EMS Growatt."""
 
+# IMPORTANTE: Coincide con el nombre de la carpeta
 DOMAIN = "spock_ems_growatt"
 
 # Config Keys
-CONF_SPOCK_ID = "spock_id"
 CONF_SPOCK_API_TOKEN = "spock_api_token"
 CONF_SPOCK_PLANT_ID = "spock_plant_id"
 CONF_INVERTER_IP = "inverter_ip"
