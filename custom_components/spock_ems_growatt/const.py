@@ -1,6 +1,6 @@
 """Constantes para la integración Growatt Spock EMS."""
 
-DOMAIN = "growatt_spock_ems"
+DOMAIN = "spock_ems_growatt"
 
 # Config Keys
 CONF_SPOCK_ID = "spock_id"
