@@ -9,14 +9,13 @@
         },
         "step": {
             "user": {
-                "title": "Configurar Growatt Spock EMS",
+                "title": "Configurar Spock EMS Growatt",
                 "data": {
-                    "spock_id": "ID Organización Spock",
                     "spock_api_token": "Token API Spock",
                     "spock_plant_id": "ID Planta Spock",
                     "inverter_ip": "IP del Inversor",
                     "modbus_port": "Puerto Modbus",
-                    "modbus_id": "ID Unidad Modbus"
+                    "modbus_id": "Modbus ID"
                 }
             }
         }
@@ -26,12 +25,11 @@
             "init": {
                 "title": "Reconfigurar Parámetros Growatt",
                 "data": {
-                    "spock_id": "ID Organización Spock",
                     "spock_api_token": "Token API Spock",
                     "spock_plant_id": "ID Planta Spock",
                     "inverter_ip": "IP del Inversor",
                     "modbus_port": "Puerto Modbus",
-                    "modbus_id": "ID Unidad Modbus"
+                    "modbus_id": "Modbus ID"
                 }
             }
         },
