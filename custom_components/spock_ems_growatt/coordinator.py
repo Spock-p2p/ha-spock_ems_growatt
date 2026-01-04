@@ -18,6 +18,7 @@ from .const import (
     CONF_INVERTER_IP,
     CONF_MODBUS_PORT,
     CONF_MODBUS_ID,
+    SCAN_INTERVAL_SECONDS,  # <--- Única variable de tiempo
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -26,7 +27,6 @@ def to_int_str_or_none(value):
     if value is None:
         return None
     try:
-        # Aunque ya vienen enteros, mantenemos esto por seguridad ante Nones
         return str(int(round(float(value))))
     except (ValueError, TypeError):
         return None
@@ -39,7 +39,8 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             hass,
             _LOGGER,
             name="Growatt Spock Coordinator",
-            update_interval=timedelta(seconds=30),
+            # Aquí aplicamos el intervalo configurado
+            update_interval=timedelta(seconds=SCAN_INTERVAL_SECONDS),
         )
         self.http_session = http_session
         self.entry_data = entry_data
@@ -49,7 +50,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
         self.client = ModbusTcpClient(
             host=entry_data[CONF_INVERTER_IP],
             port=int(entry_data[CONF_MODBUS_PORT]),
-            timeout=5
+            timeout=5  # Timeout fijo interno (robusto)
         )
         self.nominal_power_w = None
 
@@ -94,7 +95,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                      val = self._decode_u32_be(ir.registers)
                      self.nominal_power_w = val * 0.1 / 1000.0
 
-        # 2. Telemetría - APLICAMOS REDONDEO A ENTEROS AQUÍ
+        # 2. Telemetría - CON REDONDEO A ENTEROS
         
         # PV Power (3001)
         ir_pv = self._read_robust(self.client.read_input_registers, 3001, 2)
@@ -105,7 +106,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
         ir_grid = self._read_robust(self.client.read_input_registers, 3048, 1)
         if ir_grid.isError(): raise ModbusException("Error leyendo Grid Power (3048)")
         grid_raw = self._decode_s16(ir_grid.registers[0]) * 0.1
-        net_grid_p = int(round(abs(grid_raw) * 3.73)) # Redondeo tras aplicar factor trifásico
+        net_grid_p = int(round(abs(grid_raw) * 3.73))
 
         # SOC (3010)
         ir_soc = self._read_robust(self.client.read_input_registers, 3010, 1)
@@ -168,7 +169,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                 SPOCK_TELEMETRY_API_ENDPOINT,
                 json=payload,
                 headers=headers,
-                timeout=10
+                timeout=10 # Timeout fijo interno (robusto)
             ) as resp:
                 if resp.status != 200:
                     _LOGGER.warning("Spock API respondió con error: %s", resp.status)
