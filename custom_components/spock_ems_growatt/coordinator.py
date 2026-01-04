@@ -95,7 +95,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                      val = self._decode_u32_be(ir.registers)
                      self.nominal_power_w = val * 0.1 / 1000.0
 
-        # 2. Telemetría
+        # 2. Telemetría - CON REDONDEO A ENTEROS
         ir_pv = self._read_robust(self.client.read_input_registers, 3001, 2)
         if ir_pv.isError(): raise ModbusException("Error leyendo PV Power (3001)")
         pv_p = int(round(self._decode_u32_be(ir_pv.registers) * 0.1))
@@ -132,18 +132,9 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             
             _LOGGER.debug("Datos Modbus LEÍDOS: %s", data)
             
-            # Limpiamos el ID de posibles espacios y lo convertimos a entero
-            raw_plant_id = str(self.entry_data[CONF_SPOCK_PLANT_ID]).strip()
-            
-            # Intento de conversión robusta a entero para el payload
-            try:
-                plant_id_val = int(raw_plant_id)
-            except ValueError:
-                # Si falla (ej: es alfanumérico), lo mandamos como string limpio
-                plant_id_val = raw_plant_id
-
+            # REVERTIDO: Simplemente convertimos a string (comportamiento estándar SMA)
             spock_payload = {
-                "plant_id": plant_id_val,  # <--- Enviamos INT o String limpio
+                "plant_id": str(self.entry_data[CONF_SPOCK_PLANT_ID]),
                 "bat_soc": to_int_str_or_none(data.get("battery_soc_total")),
                 "bat_power": to_int_str_or_none(data.get("battery_power")),
                 "pv_power": to_int_str_or_none(data.get("pv_power")),
@@ -164,7 +155,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
 
     async def _send_to_spock(self, payload):
         headers = {
-            "X-Auth-Token": self.entry_data[CONF_SPOCK_API_TOKEN].strip(), # Limpiamos también el token
+            "X-Auth-Token": self.entry_data[CONF_SPOCK_API_TOKEN],
             "Content-Type": "application/json"
         }
         
