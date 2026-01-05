@@ -1,6 +1,7 @@
 """Coordinador de datos para Spock EMS Growatt."""
 import logging
 import json
+import math  # Importamos math para la raíz cuadrada exacta
 import asyncio
 from datetime import timedelta
 from typing import Any, Dict
@@ -96,15 +97,23 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                      self.nominal_power_w = val * 0.1 / 1000.0
 
         # 2. Telemetría - CON REDONDEO A ENTEROS
+        
+        # PV Power (3001)
         ir_pv = self._read_robust(self.client.read_input_registers, 3001, 2)
         if ir_pv.isError(): raise ModbusException("Error leyendo PV Power (3001)")
         pv_p = int(round(self._decode_u32_be(ir_pv.registers) * 0.1))
 
+        # Grid Power (3048) - CORRECCIÓN CRÍTICA
         ir_grid = self._read_robust(self.client.read_input_registers, 3048, 1)
         if ir_grid.isError(): raise ModbusException("Error leyendo Grid Power (3048)")
         grid_raw = self._decode_s16(ir_grid.registers[0]) * 0.1
-        net_grid_p = int(round(abs(grid_raw) * 3.73))
+        
+        # FÓRMULA CORREGIDA:
+        # 1. Invertimos signo (-1) para que Importar sea Positivo (estándar HA/Spock)
+        # 2. Multiplicamos por raíz de 3 (1.732) para ajustar trifásica
+        net_grid_p = int(round(grid_raw * -1 * math.sqrt(3)))
 
+        # SOC (3010)
         ir_soc = self._read_robust(self.client.read_input_registers, 3010, 1)
         soc = ir_soc.registers[0] if not ir_soc.isError() else 0
         if soc == 0:
@@ -112,6 +121,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             if not ir_soc_bms.isError():
                 soc = ir_soc_bms.registers[0]
 
+        # Batería (3178)
         ir_bat = self._read_robust(self.client.read_input_registers, 3178, 4)
         if ir_bat.isError(): raise ModbusException("Error leyendo Batería (3178)")
         pdis_w = self._decode_u32_be(ir_bat.registers[0:2]) * 0.1
@@ -132,9 +142,11 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             
             _LOGGER.debug("Datos Modbus LEÍDOS: %s", data)
             
-            # REVERTIDO: Simplemente convertimos a string (comportamiento estándar SMA)
+            # Limpieza exhaustiva del ID
+            plant_id_clean = str(self.entry_data[CONF_SPOCK_PLANT_ID]).strip()
+
             spock_payload = {
-                "plant_id": str(self.entry_data[CONF_SPOCK_PLANT_ID]),
+                "plant_id": plant_id_clean,
                 "bat_soc": to_int_str_or_none(data.get("battery_soc_total")),
                 "bat_power": to_int_str_or_none(data.get("battery_power")),
                 "pv_power": to_int_str_or_none(data.get("pv_power")),
@@ -155,7 +167,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
 
     async def _send_to_spock(self, payload):
         headers = {
-            "X-Auth-Token": self.entry_data[CONF_SPOCK_API_TOKEN],
+            "X-Auth-Token": str(self.entry_data[CONF_SPOCK_API_TOKEN]).strip(),
             "Content-Type": "application/json"
         }
         
