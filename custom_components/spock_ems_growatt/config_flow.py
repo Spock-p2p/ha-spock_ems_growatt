@@ -69,26 +69,27 @@ class GrowattSpockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class GrowattSpockOptionsFlow(config_entries.OptionsFlow):
     """Flujo de reconfiguración (Options)."""
     
-    # RESTAURADO: Necesario para recibir el argumento config_entry
     def __init__(self, config_entry):
-        self.config_entry = config_entry
+        # SOLUCIÓN: Usamos self._config_entry (con guion bajo)
+        # para no chocar con la propiedad 'config_entry' de la clase padre
+        self._config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
         errors = {}
         if user_input is not None:
             try:
                 await validate_input(self.hass, user_input)
-                # Actualizamos la entrada con los nuevos datos
-                self.hass.config_entries.async_update_entry(self.config_entry, data=user_input)
-                # Recargamos la integración para aplicar cambios
-                await self.hass.config_entries.async_reload(self.config_entry.entry_id)
+                # Actualizamos usando nuestra variable privada
+                self.hass.config_entries.async_update_entry(self._config_entry, data=user_input)
+                await self.hass.config_entries.async_reload(self._config_entry.entry_id)
                 return self.async_create_entry(title="", data={})
             except CannotConnect:
                 errors["base"] = "cannot_connect"
             except Exception:
                 errors["base"] = "unknown"
 
-        current = self.config_entry.data
+        # Leemos de nuestra variable privada
+        current = self._config_entry.data
         schema = vol.Schema({
             vol.Required(CONF_SPOCK_API_TOKEN, default=current.get(CONF_SPOCK_API_TOKEN)): str,
             vol.Required(CONF_SPOCK_PLANT_ID, default=current.get(CONF_SPOCK_PLANT_ID)): str,
