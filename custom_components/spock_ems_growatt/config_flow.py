@@ -33,6 +33,7 @@ class CannotConnect(Exception):
 async def validate_input(hass, data: dict):
     """Valida la conexión Modbus TCP."""
     client = ModbusTcpClient(data[CONF_INVERTER_IP], port=data[CONF_MODBUS_PORT])
+    # Ejecutamos conexión en el executor para no bloquear el loop
     is_connected = await hass.async_add_executor_job(client.connect)
     client.close()
     
@@ -68,14 +69,18 @@ class GrowattSpockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 class GrowattSpockOptionsFlow(config_entries.OptionsFlow):
     """Flujo de reconfiguración (Options)."""
     
-    # Eliminado __init__ para corregir warning de deprecación.
-    
+    # RESTAURADO: Necesario para recibir el argumento config_entry
+    def __init__(self, config_entry):
+        self.config_entry = config_entry
+
     async def async_step_init(self, user_input=None):
         errors = {}
         if user_input is not None:
             try:
                 await validate_input(self.hass, user_input)
+                # Actualizamos la entrada con los nuevos datos
                 self.hass.config_entries.async_update_entry(self.config_entry, data=user_input)
+                # Recargamos la integración para aplicar cambios
                 await self.hass.config_entries.async_reload(self.config_entry.entry_id)
                 return self.async_create_entry(title="", data={})
             except CannotConnect:
