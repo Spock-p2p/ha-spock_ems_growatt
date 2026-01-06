@@ -3,12 +3,16 @@ import math
 import voluptuous as vol
 from datetime import timedelta
 
-from homeassistant.components.sensor import PLATFORM_SCHEMA
+from homeassistant.components.sensor import (
+    PLATFORM_SCHEMA,
+    SensorDeviceClass,
+    SensorStateClass,
+)
 from homeassistant.const import (
     CONF_NAME, CONF_HOST, CONF_PORT, CONF_SCAN_INTERVAL,
-    POWER_WATT, ENERGY_KILO_WATT_HOUR,
-    DEVICE_CLASS_POWER, DEVICE_CLASS_ENERGY, DEVICE_CLASS_BATTERY,
-    PERCENTAGE
+    PERCENTAGE,
+    UnitOfPower,
+    UnitOfEnergy
 )
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
@@ -18,7 +22,11 @@ from homeassistant.util import Throttle
 try:
     from pymodbus.client import ModbusTcpClient
 except ImportError:
-    from pymodbus.client.sync import ModbusTcpClient
+    try:
+        from pymodbus.client.sync import ModbusTcpClient
+    except ImportError:
+        # Fallback para versiones muy nuevas de HA que usan estructura diferente
+        from pymodbus.client import ModbusTcpClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,15 +45,18 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): cv.time_period,
 })
 
-# Mapeo de Sensores
+# --- MAPEO DE SENSORES ---
+# Hemos eliminado las constantes antiguas (POWER_WATT, DEVICE_CLASS_POWER)
+# y usamos cadenas de texto o las nuevas clases UnitOfPower.
 # Formato: [Register Address, Unit, Icon, Device Class]
-# NOTA: La lógica del Grid la sobrescribiremos en el código, el registro aquí es placeholder.
+
+# Nota: Para máxima compatibilidad usamos strings directos: "W", "power", "battery"
 SENSOR_TYPES = {
-    'solar_power': [3001, POWER_WATT, 'mdi:solar-power', DEVICE_CLASS_POWER],
-    'grid_power':  [3048, POWER_WATT, 'mdi:transmission-tower', DEVICE_CLASS_POWER], # Usaremos lógica custom
-    'load_power':  [0,    POWER_WATT, 'mdi:home-lightning-bolt', DEVICE_CLASS_POWER], # Calculado
-    'bat_power':   [0,    POWER_WATT, 'mdi:battery-charging', DEVICE_CLASS_POWER],    # Calculado
-    'bat_soc':     [3010, PERCENTAGE, 'mdi:battery-50', DEVICE_CLASS_BATTERY],
+    'solar_power': [3001, "W", 'mdi:solar-power', "power"],
+    'grid_power':  [3048, "W", 'mdi:transmission-tower', "power"], # Lógica custom
+    'load_power':  [0,    "W", 'mdi:home-lightning-bolt', "power"], # Calculado
+    'bat_power':   [0,    "W", 'mdi:battery-charging', "power"],    # Calculado
+    'bat_soc':     [3010, PERCENTAGE, 'mdi:battery-50', "battery"],
 }
 
 def setup_platform(hass, config, add_entities, discovery_info=None):
@@ -54,8 +65,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     port = config.get(CONF_PORT)
     modbus_id = config.get(CONF_MODBUS_ID)
     name = config.get(CONF_NAME)
-    scan_interval = config.get(CONF_SCAN_INTERVAL)
-
+    
     # Inicializamos el Hub de datos
     hub = GrowattHub(host, port, modbus_id)
     hub.update()
@@ -71,9 +81,10 @@ class GrowattHub:
     """Clase para manejar la conexión Modbus y leer datos en bloque."""
 
     def __init__(self, host, port, modbus_id):
+        # Intentamos instanciar el cliente de forma compatible
         self._client = ModbusTcpClient(host=host, port=port)
         self._modbus_id = modbus_id
-        self._data = [0] * 100 # Buffer inicial
+        self._data = [0] * 100 
         self._bat_data = [0] * 50
 
     def get_data(self):
@@ -85,32 +96,50 @@ class GrowattHub:
     @Throttle(timedelta(seconds=5))
     def update(self):
         """Lee los registros del inversor."""
-        if not self._client.connect():
-            _LOGGER.error("No se pudo conectar al Inversor Growatt")
+        try:
+            if not self._client.connect():
+                _LOGGER.error("No se pudo conectar al Inversor Growatt (Modbus TCP) en %s", self._client.host if hasattr(self._client, 'host') else 'IP desconocida')
+                return
+        except Exception as e:
+            _LOGGER.error("Error conectando modbus: %s", e)
             return
 
         try:
             # 1. LEER BLOQUE PRINCIPAL (Solar + Grid)
             # Leemos desde el 3000 hasta el 3055 (55 registros) para asegurar que pillamos el 3048
-            # Tu script usa Input Registers (FC04)
-            req = self._client.read_input_registers(3000, 55, device_id=self._modbus_id) # Pymodbus v3 usa slave/device_id
             
-            # Compatibilidad con Pymodbus v2 (unit) si falla
+            # Pymodbus v3+ usa 'slave', v2 usa 'unit'
+            kwargs = {'slave': self._modbus_id}
+            try:
+                # Intentamos llamada estilo v3
+                req = self._client.read_input_registers(3000, 55, **kwargs)
+            except TypeError:
+                # Fallback a estilo v2
+                kwargs = {'unit': self._modbus_id}
+                req = self._client.read_input_registers(3000, 55, **kwargs)
+            
+            # Verificación de error genérica
             if getattr(req, 'isError', lambda: True)(): 
-                 req = self._client.read_input_registers(3000, 55, unit=self._modbus_id)
+                 # Último intento desesperado sin argumentos extra
+                 try:
+                    req = self._client.read_input_registers(3000, 55)
+                 except:
+                    pass
 
-            if not req.isError():
+            if req and not getattr(req, 'isError', lambda: True)():
                 self._data = req.registers
             else:
-                _LOGGER.error("Error leyendo registros principales (3000-3055)")
+                _LOGGER.debug("Error leyendo registros principales (3000-3055)")
 
             # 2. LEER BLOQUE BATERÍA (Alrededor del 3170)
-            # Tu script usa 3178 y 3180. Leemos un bloque desde 3170.
-            req_bat = self._client.read_input_registers(3170, 20, device_id=self._modbus_id)
-            if getattr(req_bat, 'isError', lambda: True)():
-                 req_bat = self._client.read_input_registers(3170, 20, unit=self._modbus_id)
+            try:
+                # Intentamos estilo v3
+                req_bat = self._client.read_input_registers(3170, 20, slave=self._modbus_id)
+            except TypeError:
+                # Fallback estilo v2
+                req_bat = self._client.read_input_registers(3170, 20, unit=self._modbus_id)
 
-            if not req_bat.isError():
+            if req_bat and not getattr(req_bat, 'isError', lambda: True)():
                 self._bat_data = req_bat.registers
             
         except Exception as e:
@@ -125,11 +154,14 @@ class GrowattEmsSensor(Entity):
     def __init__(self, hub, name, sensor_key, unit, icon, device_class):
         self._hub = hub
         self._key = sensor_key
-        self._name = f"{name} {sensor_key.replace('_', ' ').title()}"
+        # Formatear nombre amigable
+        friendly_key = sensor_key.replace('_', ' ').title()
+        self._name = f"{name} {friendly_key}"
         self._unit = unit
         self._icon = icon
         self._device_class = device_class
         self._state = None
+        self._attr_state_class = SensorStateClass.MEASUREMENT
 
     @property
     def name(self):
@@ -166,60 +198,12 @@ class GrowattEmsSensor(Entity):
     def update(self):
         """Calcula el estado del sensor basándose en los datos crudos."""
         self._hub.update()
-        data = self._hub.get_data()      # Bloque 3000 (Indice 0 = Reg 3000)
-        bat_data = self._hub.get_bat_data() # Bloque 3170 (Indice 0 = Reg 3170)
+        data = self._hub.get_data()      # Bloque 3000
+        bat_data = self._hub.get_bat_data() # Bloque 3170
 
-        # Si no hay datos, no actualizamos
+        # Si no hay datos suficientes, no actualizamos
         if not data or len(data) < 50:
             return
 
         # --- VALORES BASICOS ---
-        # Solar (3001-3002) -> Indices 1 y 2
-        p_solar = self.decode_u32(data, 1) * 0.1
-
-        # Batería (Carga 3180 / Descarga 3178)
-        # 3180 es índice 10 en bat_data (3170+10)
-        # 3178 es índice 8 en bat_data
-        p_bat_charge = 0
-        p_bat_discharge = 0
-        if bat_data and len(bat_data) > 10:
-            p_bat_charge = self.decode_u32(bat_data, 10) * 0.1
-            p_bat_discharge = self.decode_u32(bat_data, 8) * 0.1
-        
-        p_bat_net = p_bat_charge - p_bat_discharge # (+) Cargando, (-) Descargando
-
-        # --- GRID (LA PARTE CRITICA) ---
-        # Registro 3048 -> Indice 48 en data
-        # Tu script: grid_raw * -1 * math.sqrt(3)
-        try:
-            raw_3048 = data[48]
-            val_3048 = self.decode_s16(raw_3048) * 0.1
-            p_grid = val_3048 * -1 * math.sqrt(3)
-        except (IndexError, TypeError):
-            p_grid = 0
-
-        # --- LOAD (Calculado) ---
-        # Load = Grid + Solar - Bat_Net
-        p_load = p_grid + p_solar - p_bat_net
-
-        # --- ASIGNACIÓN DE ESTADOS ---
-        if self._key == 'solar_power':
-            self._state = round(p_solar, 1)
-        
-        elif self._key == 'grid_power':
-            self._state = round(p_grid, 1)
-        
-        elif self._key == 'load_power':
-            # Load no puede ser negativo físicamente (errores de redondeo)
-            self._state = round(max(0, p_load), 1)
-        
-        elif self._key == 'bat_power':
-            self._state = round(p_bat_net, 1)
-        
-        elif self._key == 'bat_soc':
-            # SOC está en 3010 (Indice 10 en data)
-            # O en 3171 (Indice 1 en bat_data) si el otro es 0
-            soc = data[10]
-            if soc == 0 and bat_data and len(bat_data) > 1:
-                soc = bat_data[1]
-            self._state = soc
+        # Solar (3001-3002) -> Indices
