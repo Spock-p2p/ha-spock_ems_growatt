@@ -1,8 +1,7 @@
 """Coordinador de datos para Spock EMS Growatt."""
 import logging
 import json
-import math  # Importamos math para la raíz cuadrada exacta
-import asyncio
+import math
 from datetime import timedelta
 from typing import Any, Dict
 
@@ -25,6 +24,7 @@ from .const import (
 
 _LOGGER = logging.getLogger(__name__)
 
+
 def to_int_str_or_none(value):
     if value is None:
         return None
@@ -32,6 +32,7 @@ def to_int_str_or_none(value):
         return str(int(round(float(value))))
     except (ValueError, TypeError):
         return None
+
 
 class GrowattSpockCoordinator(DataUpdateCoordinator):
     """Clase que gestiona el polling a Growatt y el push a Spock."""
@@ -45,13 +46,13 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
         )
         self.http_session = http_session
         self.entry_data = entry_data
-        
+
         self.modbus_id = int(entry_data[CONF_MODBUS_ID])
-        
+
         self.client = ModbusTcpClient(
             host=entry_data[CONF_INVERTER_IP],
             port=int(entry_data[CONF_MODBUS_PORT]),
-            timeout=5
+            timeout=5,
         )
         self.nominal_power_w = None
 
@@ -80,40 +81,43 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
     def _read_modbus_sync(self) -> Dict[str, Any]:
         """Lectura síncrona de registros Modbus."""
         if not self.client.connect():
-            raise ConnectionError(f"No se pudo establecer conexión TCP con {self.entry_data[CONF_INVERTER_IP]}")
+            raise ConnectionError(
+                f"No se pudo establecer conexión TCP con {self.entry_data[CONF_INVERTER_IP]}"
+            )
 
-        # 1. Potencia Nominal
+        # 1. Potencia Nominal (se mantiene como estaba)
         if self.nominal_power_w is None:
             hr = self._read_robust(self.client.read_holding_registers, 10, 1)
             if not hr.isError():
                 val = hr.registers[0]
-                if 5000 <= val <= 7000: self.nominal_power_w = val / 1000.0
-                elif 50000 <= val <= 70000: self.nominal_power_w = val / 10000.0
-            
+                if 5000 <= val <= 7000:
+                    self.nominal_power_w = val / 1000.0
+                elif 50000 <= val <= 70000:
+                    self.nominal_power_w = val / 10000.0
+
             if self.nominal_power_w is None:
-                 ir = self._read_robust(self.client.read_input_registers, 3005, 2)
-                 if not ir.isError():
-                     val = self._decode_u32_be(ir.registers)
-                     self.nominal_power_w = val * 0.1 / 1000.0
+                ir = self._read_robust(self.client.read_input_registers, 3005, 2)
+                if not ir.isError():
+                    val = self._decode_u32_be(ir.registers)
+                    self.nominal_power_w = val * 0.1 / 1000.0
 
-        # 2. Telemetría - CON REDONDEO A ENTEROS
-        
-        # PV Power (3001)
+        # 2. PRODUCCIÓN SOLAR (PV Power) - IR 3001-3002
         ir_pv = self._read_robust(self.client.read_input_registers, 3001, 2)
-        if ir_pv.isError(): raise ModbusException("Error leyendo PV Power (3001)")
-        pv_p = int(round(self._decode_u32_be(ir_pv.registers) * 0.1))
+        if ir_pv.isError():
+            raise ModbusException("Error leyendo PV Power (3001)")
+        pv_w = self._decode_u32_be(ir_pv.registers) * 0.1
 
-        # Grid Power (3048) - CORRECCIÓN CRÍTICA
+        # 3. RED (GRID) - IR 3048 (s16, 0.1W) CORREGIDO
+        # Registro negativo cuando importamos.
+        # Multiplicamos por -1 para que Import sea positivo.
+        # Multiplicamos por sqrt(3) para ajustar lectura de fase a trifásica.
         ir_grid = self._read_robust(self.client.read_input_registers, 3048, 1)
-        if ir_grid.isError(): raise ModbusException("Error leyendo Grid Power (3048)")
+        if ir_grid.isError():
+            raise ModbusException("Error leyendo Grid Power (3048)")
         grid_raw = self._decode_s16(ir_grid.registers[0]) * 0.1
-        
-        # FÓRMULA CORREGIDA:
-        # 1. Invertimos signo (-1) para que Importar sea Positivo (estándar HA/Spock)
-        # 2. Multiplicamos por raíz de 3 (1.732) para ajustar trifásica
-        net_grid_p = int(round(grid_raw * -1 * math.sqrt(3)))
+        grid_w = grid_raw * -1 * math.sqrt(3)
 
-        # SOC (3010)
+        # 4. SOC (3010) con fallback a BMS (3171)
         ir_soc = self._read_robust(self.client.read_input_registers, 3010, 1)
         soc = ir_soc.registers[0] if not ir_soc.isError() else 0
         if soc == 0:
@@ -121,27 +125,39 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             if not ir_soc_bms.isError():
                 soc = ir_soc_bms.registers[0]
 
-        # Batería (3178)
-        ir_bat = self._read_robust(self.client.read_input_registers, 3178, 4)
-        if ir_bat.isError(): raise ModbusException("Error leyendo Batería (3178)")
-        pdis_w = self._decode_u32_be(ir_bat.registers[0:2]) * 0.1
-        pch_w = self._decode_u32_be(ir_bat.registers[2:4]) * 0.1
-        bat_p = int(round(pch_w - pdis_w))
+        # 5. BATERÍA (registros correctos, como tu script)
+        # Discharge: IR 3178-3179 (u32, 0.1W)
+        ir_pdis = self._read_robust(self.client.read_input_registers, 3178, 2)
+        # Charge:   IR 3180-3181 (u32, 0.1W)
+        ir_pch = self._read_robust(self.client.read_input_registers, 3180, 2)
 
+        if ir_pdis.isError() or ir_pch.isError():
+            raise ModbusException("Error leyendo potencia de batería (3178/3180)")
+
+        pdis_w = self._decode_u32_be(ir_pdis.registers) * 0.1
+        pch_w = self._decode_u32_be(ir_pch.registers) * 0.1
+
+        # Neto batería: positivo = carga, negativo = descarga
+        bat_w = pch_w - pdis_w
+
+        # 6. LOAD (Consumo vivienda) = Grid + PV - Battery
+        load_w = grid_w + pv_w - bat_w
+
+        # Redondeo al final (como ints para HA/Spock)
         return {
             "battery_soc_total": int(soc),
-            "battery_power": bat_p,
-            "pv_power": pv_p,
-            "net_grid_power": net_grid_p,
-            "supply_power": 0,
+            "battery_power": int(round(bat_w)),
+            "pv_power": int(round(pv_w)),
+            "net_grid_power": int(round(grid_w)),
+            "supply_power": int(round(load_w)),
         }
 
     async def _async_update_data(self):
         try:
             data = await self.hass.async_add_executor_job(self._read_modbus_sync)
-            
+
             _LOGGER.debug("Datos Modbus LEÍDOS: %s", data)
-            
+
             # Limpieza exhaustiva del ID
             plant_id_clean = str(self.entry_data[CONF_SPOCK_PLANT_ID]).strip()
 
@@ -154,6 +170,8 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                 "bat_charge_allowed": "true",
                 "bat_discharge_allowed": "true",
                 "bat_capacity": "0",
+                # OJO: mantengo tu campo tal cual (aunque el nombre suene a energía),
+                # ahora al menos llevará el LOAD correcto calculado.
                 "total_grid_output_energy": to_int_str_or_none(data.get("supply_power")),
             }
 
@@ -168,32 +186,34 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
     async def _send_to_spock(self, payload):
         headers = {
             "X-Auth-Token": str(self.entry_data[CONF_SPOCK_API_TOKEN]).strip(),
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
         }
-        
+
         serialized_payload = json.dumps(payload)
-        
+
         _LOGGER.debug("Enviando a Spock (RAW BODY): %s", serialized_payload)
 
         try:
             async with self.http_session.post(
                 SPOCK_TELEMETRY_API_ENDPOINT,
-                data=serialized_payload, 
+                data=serialized_payload,
                 headers=headers,
-                timeout=10
+                timeout=10,
             ) as resp:
-                
+
                 response_text = await resp.text()
-                
+
                 if resp.status != 200:
                     _LOGGER.error("Error HTTP Spock (%s): %s", resp.status, response_text)
-                    return 
-                
+                    return
+
                 try:
                     data = await resp.json(content_type=None)
                     _LOGGER.debug("Respuesta de Spock: %s", data)
-                except Exception as e:
-                    _LOGGER.warning("Spock respondió 200 OK pero no es JSON válido: %s", response_text)
+                except Exception:
+                    _LOGGER.warning(
+                        "Spock respondió 200 OK pero no es JSON válido: %s", response_text
+                    )
 
         except ClientError as err:
             _LOGGER.error("Error de conexión con Spock API: %s", err)
