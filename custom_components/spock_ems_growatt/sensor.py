@@ -6,47 +6,58 @@ from homeassistant.components.sensor import (
 )
 from homeassistant.const import UnitOfPower, PERCENTAGE
 from homeassistant.helpers.entity import DeviceInfo
+
 from .const import DOMAIN, CONF_INVERTER_IP
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]["coordinator"]
-    
-    # Definimos los sensores con todas las etiquetas necesarias para el Panel de Energía
+
+    # Sensores con etiquetas necesarias para el Panel de Energía
     entities = [
         GrowattSpockSensor(
-            coordinator, 
-            name="PV Power", 
-            key="pv_power", 
-            unit=UnitOfPower.WATT, 
+            coordinator,
+            name="PV Power",
+            key="pv_power",
+            unit=UnitOfPower.WATT,
             device_class=SensorDeviceClass.POWER,
-            state_class=SensorStateClass.MEASUREMENT
+            state_class=SensorStateClass.MEASUREMENT,
         ),
         GrowattSpockSensor(
-            coordinator, 
-            name="Grid Power", 
-            key="net_grid_power", 
-            unit=UnitOfPower.WATT, 
+            coordinator,
+            name="Grid Power",
+            key="net_grid_power",
+            unit=UnitOfPower.WATT,
             device_class=SensorDeviceClass.POWER,
-            state_class=SensorStateClass.MEASUREMENT
+            state_class=SensorStateClass.MEASUREMENT,
         ),
         GrowattSpockSensor(
-            coordinator, 
-            name="Battery SOC", 
-            key="battery_soc_total", 
-            unit=PERCENTAGE, 
+            coordinator,
+            name="Load Power",
+            key="supply_power",
+            unit=UnitOfPower.WATT,
+            device_class=SensorDeviceClass.POWER,
+            state_class=SensorStateClass.MEASUREMENT,
+        ),
+        GrowattSpockSensor(
+            coordinator,
+            name="Battery SOC",
+            key="battery_soc_total",
+            unit=PERCENTAGE,
             device_class=SensorDeviceClass.BATTERY,
-            state_class=SensorStateClass.MEASUREMENT
+            state_class=SensorStateClass.MEASUREMENT,
         ),
         GrowattSpockSensor(
-            coordinator, 
-            name="Battery Power", 
-            key="battery_power", 
-            unit=UnitOfPower.WATT, 
+            coordinator,
+            name="Battery Power",
+            key="battery_power",
+            unit=UnitOfPower.WATT,
             device_class=SensorDeviceClass.POWER,
-            state_class=SensorStateClass.MEASUREMENT
+            state_class=SensorStateClass.MEASUREMENT,
         ),
     ]
     async_add_entities(entities)
+
 
 class GrowattSpockSensor(SensorEntity):
     def __init__(self, coordinator, name, key, unit, device_class, state_class):
@@ -78,7 +89,7 @@ class GrowattSpockSensor(SensorEntity):
     def unit_of_measurement(self):
         """Unidad de medida (W, %, etc)."""
         return self._unit
-        
+
     @property
     def device_class(self):
         """Define el tipo de dato (Power, Battery, etc)."""
@@ -108,4 +119,6 @@ class GrowattSpockSensor(SensorEntity):
 
     async def async_added_to_hass(self):
         """Cuando se añade a HA, nos suscribimos al coordinador."""
-        self.async_on_remove(self.coordinator.async_add_listener(self.async_write_ha_state))
+        self.async_on_remove(
+            self.coordinator.async_add_listener(self.async_write_ha_state)
+        )
