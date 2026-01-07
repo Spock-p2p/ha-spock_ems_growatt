@@ -319,7 +319,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
         operation_mode = str(spock_response.get("operation_mode", "none")).strip().lower()
         action_w = self._parse_action_w(spock_response.get("action"))
 
-        if action_w == 0:
+        if action_w == 0 and operation_mode in ("charge", "discharge"):
             desired_mode = "load_first"
             desired_value_w = 0
         else:
