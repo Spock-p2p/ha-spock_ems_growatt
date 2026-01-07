@@ -10,6 +10,10 @@ CONF_INVERTER_IP = "inverter_ip"
 CONF_MODBUS_PORT = "modbus_port"
 CONF_MODBUS_ID = "modbus_id"
 
+# NUEVO: Base de potencia para convertir W -> % (carga/descarga)
+CONF_BATTERY_MAX_W = "battery_max_w"
+DEFAULT_BATTERY_MAX_W = 9000
+
 # Intervalo de ejecución (en segundos)
 # Este es el tiempo que espera entre lecturas
 SCAN_INTERVAL_SECONDS = 60
