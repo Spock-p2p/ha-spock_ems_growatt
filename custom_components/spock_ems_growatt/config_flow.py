@@ -12,19 +12,22 @@ from .const import (
     CONF_INVERTER_IP,
     CONF_MODBUS_PORT,
     CONF_MODBUS_ID,
+    CONF_BATTERY_MAX_W,
+    DEFAULT_BATTERY_MAX_W,
     DEFAULT_PORT,
     DEFAULT_MODBUS_ID,
 )
 
 _LOGGER = logging.getLogger(__name__)
 
-# Schema
+# Schema (incluye battery_max_w con default 9000)
 DATA_SCHEMA = vol.Schema({
     vol.Required(CONF_SPOCK_API_TOKEN): str,
     vol.Required(CONF_SPOCK_PLANT_ID): str,
     vol.Required(CONF_INVERTER_IP): str,
-    vol.Optional(CONF_MODBUS_PORT, default=DEFAULT_PORT): int,
-    vol.Optional(CONF_MODBUS_ID, default=DEFAULT_MODBUS_ID): int,
+    vol.Optional(CONF_MODBUS_PORT, default=DEFAULT_PORT): vol.Coerce(int),
+    vol.Optional(CONF_MODBUS_ID, default=DEFAULT_MODBUS_ID): vol.Coerce(int),
+    vol.Optional(CONF_BATTERY_MAX_W, default=DEFAULT_BATTERY_MAX_W): vol.Coerce(int),
 })
 
 class CannotConnect(Exception):
@@ -33,12 +36,20 @@ class CannotConnect(Exception):
 async def validate_input(hass, data: dict):
     """Valida la conexión Modbus TCP."""
     client = ModbusTcpClient(data[CONF_INVERTER_IP], port=data[CONF_MODBUS_PORT])
-    # Ejecutamos conexión en el executor para no bloquear el loop
     is_connected = await hass.async_add_executor_job(client.connect)
     client.close()
-    
+
     if not is_connected:
         raise CannotConnect
+
+    # Validación simple del battery_max_w (no bloquea conexión, pero evita valores absurdos)
+    try:
+        bmw = int(data.get(CONF_BATTERY_MAX_W, DEFAULT_BATTERY_MAX_W))
+        if bmw <= 0:
+            raise ValueError
+    except Exception:
+        # Si el usuario mete algo raro, lo normalizamos al default
+        data[CONF_BATTERY_MAX_W] = DEFAULT_BATTERY_MAX_W
 
     return {"title": f"Growatt {data[CONF_INVERTER_IP]}"}
 
@@ -68,10 +79,9 @@ class GrowattSpockConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 class GrowattSpockOptionsFlow(config_entries.OptionsFlow):
     """Flujo de reconfiguración (Options)."""
-    
+
     def __init__(self, config_entry):
-        # SOLUCIÓN: Usamos self._config_entry (con guion bajo)
-        # para no chocar con la propiedad 'config_entry' de la clase padre
+        # Usamos variable privada para no chocar con la propiedad 'config_entry'
         self._config_entry = config_entry
 
     async def async_step_init(self, user_input=None):
@@ -79,7 +89,7 @@ class GrowattSpockOptionsFlow(config_entries.OptionsFlow):
         if user_input is not None:
             try:
                 await validate_input(self.hass, user_input)
-                # Actualizamos usando nuestra variable privada
+                # Seguimos tu enfoque actual: reconfiguramos entry.data
                 self.hass.config_entries.async_update_entry(self._config_entry, data=user_input)
                 await self.hass.config_entries.async_reload(self._config_entry.entry_id)
                 return self.async_create_entry(title="", data={})
@@ -88,14 +98,14 @@ class GrowattSpockOptionsFlow(config_entries.OptionsFlow):
             except Exception:
                 errors["base"] = "unknown"
 
-        # Leemos de nuestra variable privada
         current = self._config_entry.data
         schema = vol.Schema({
             vol.Required(CONF_SPOCK_API_TOKEN, default=current.get(CONF_SPOCK_API_TOKEN)): str,
             vol.Required(CONF_SPOCK_PLANT_ID, default=current.get(CONF_SPOCK_PLANT_ID)): str,
             vol.Required(CONF_INVERTER_IP, default=current.get(CONF_INVERTER_IP)): str,
-            vol.Optional(CONF_MODBUS_PORT, default=current.get(CONF_MODBUS_PORT, DEFAULT_PORT)): int,
-            vol.Optional(CONF_MODBUS_ID, default=current.get(CONF_MODBUS_ID, DEFAULT_MODBUS_ID)): int,
+            vol.Optional(CONF_MODBUS_PORT, default=current.get(CONF_MODBUS_PORT, DEFAULT_PORT)): vol.Coerce(int),
+            vol.Optional(CONF_MODBUS_ID, default=current.get(CONF_MODBUS_ID, DEFAULT_MODBUS_ID)): vol.Coerce(int),
+            vol.Optional(CONF_BATTERY_MAX_W, default=current.get(CONF_BATTERY_MAX_W, DEFAULT_BATTERY_MAX_W)): vol.Coerce(int),
         })
 
         return self.async_show_form(step_id="init", data_schema=schema, errors=errors)
