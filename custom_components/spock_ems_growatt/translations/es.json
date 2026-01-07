@@ -1,41 +1,43 @@
 {
-    "config": {
-        "abort": {
-            "already_configured": "El dispositivo ya está configurado"
-        },
-        "error": {
-            "cannot_connect": "Fallo al conectar con el Inversor (Modbus TCP)",
-            "unknown": "Error inesperado"
-        },
-        "step": {
-            "user": {
-                "title": "Configurar Spock EMS Growatt",
-                "data": {
-                    "spock_api_token": "Token API Spock",
-                    "spock_plant_id": "ID Planta Spock",
-                    "inverter_ip": "IP del Inversor",
-                    "modbus_port": "Puerto Modbus",
-                    "modbus_id": "Modbus ID"
-                }
-            }
-        }
+  "config": {
+    "abort": {
+      "already_configured": "El dispositivo ya está configurado"
     },
-    "options": {
-        "step": {
-            "init": {
-                "title": "Reconfigurar Parámetros Growatt",
-                "data": {
-                    "spock_api_token": "Token API Spock",
-                    "spock_plant_id": "ID Planta Spock",
-                    "inverter_ip": "IP del Inversor",
-                    "modbus_port": "Puerto Modbus",
-                    "modbus_id": "Modbus ID"
-                }
-            }
-        },
-        "error": {
-            "cannot_connect": "Fallo al conectar con el Inversor",
-            "unknown": "Error inesperado"
+    "error": {
+      "cannot_connect": "Fallo al conectar con el Inversor (Modbus TCP)",
+      "unknown": "Error inesperado"
+    },
+    "step": {
+      "user": {
+        "title": "Configurar Spock EMS Growatt",
+        "data": {
+          "spock_api_token": "Token API Spock",
+          "spock_plant_id": "ID Planta Spock",
+          "inverter_ip": "IP del Inversor",
+          "modbus_port": "Puerto Modbus",
+          "modbus_id": "Modbus ID",
+          "battery_max_w": "Potencia base batería (W)"
         }
+      }
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Reconfigurar Parámetros Growatt",
+        "data": {
+          "spock_api_token": "Token API Spock",
+          "spock_plant_id": "ID Planta Spock",
+          "inverter_ip": "IP del Inversor",
+          "modbus_port": "Puerto Modbus",
+          "modbus_id": "Modbus ID",
+          "battery_max_w": "Potencia base batería (W)"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Fallo al conectar con el Inversor",
+      "unknown": "Error inesperado"
+    }
+  }
 }
