@@ -236,11 +236,11 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                 "bat_soc": to_int_str_or_none(data.get("battery_soc_total")),
                 "bat_power": to_int_str_or_none(data.get("battery_power")),
                 "pv_power": to_int_str_or_none(data.get("pv_power")),
-                "ongrid_power": to_int_str_or_none(data.get("supply_power")),
+                "ongrid_power": to_int_str_or_none(data.get("net_grid_power")),
                 "bat_charge_allowed": "true",
                 "bat_discharge_allowed": "true",
                 "bat_capacity": "0",
-                "total_grid_output_energy": to_int_str_or_none(data.get("net_grid_power")),
+                "total_grid_output_energy": to_int_str_or_none(data.get("supply_power")),
             }
 
             spock_response = await self._send_to_spock(spock_payload)
