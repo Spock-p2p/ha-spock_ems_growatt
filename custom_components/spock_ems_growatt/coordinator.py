@@ -331,10 +331,10 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                 desired_value_w = action_w
             elif operation_mode in ("auto", "none"):
                 desired_mode = "load_first"
-                desired_value_w = 5000
+                desired_value_w = 9000
             else:
                 desired_mode = "load_first"
-                desired_value_w = 5000
+                desired_value_w = 9000
 
         signature = (desired_mode, int(desired_value_w))
         if self._last_command_signature == signature:
