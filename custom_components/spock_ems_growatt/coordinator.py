@@ -157,7 +157,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
         return self.client.write_registers(address, values_u16, unit=self.modbus_id)
 
     # ============================================================
-    # TELEMETRÍA (SIN CAMBIOS DE LÓGICA)
+    # TELEMETRÍA
     # ============================================================
     def _read_modbus_sync(self) -> Dict[str, Any]:
         """Lectura síncrona de registros Modbus."""
@@ -183,20 +183,13 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                         val = self._decode_u32_be(ir.registers)
                         self.nominal_power_w = val * 0.1 / 1000.0
 
-            # PV Power
+            # PV Power (IR3001-3002) u32 0.1W
             ir_pv = self._read_robust(self.client.read_input_registers, 3001, 2)
             if ir_pv.isError():
                 raise ModbusException("Error leyendo PV Power (3001)")
             pv_w = self._decode_u32_be(ir_pv.registers) * 0.1
 
-            # Grid Power (3048) corregido
-            ir_grid = self._read_robust(self.client.read_input_registers, 3048, 1)
-            if ir_grid.isError():
-                raise ModbusException("Error leyendo Grid Power (3048)")
-            grid_raw = self._decode_s16(ir_grid.registers[0]) * 0.1
-            grid_w = grid_raw * -1 * math.sqrt(3)
-
-            # SOC
+            # SOC (fallback BMS)
             ir_soc = self._read_robust(self.client.read_input_registers, 3010, 1)
             soc = ir_soc.registers[0] if not ir_soc.isError() else 0
             if soc == 0:
@@ -204,7 +197,7 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
                 if not ir_soc_bms.isError():
                     soc = ir_soc_bms.registers[0]
 
-            # Battery power (correcto)
+            # Battery power (IR3178/3180) u32 0.1W
             ir_pdis = self._read_robust(self.client.read_input_registers, 3178, 2)
             ir_pch = self._read_robust(self.client.read_input_registers, 3180, 2)
             if ir_pdis.isError() or ir_pch.isError():
@@ -213,8 +206,25 @@ class GrowattSpockCoordinator(DataUpdateCoordinator):
             pch_w = self._decode_u32_be(ir_pch.registers) * 0.1
             bat_w = pch_w - pdis_w  # + carga / - descarga
 
-            # Load = Grid + PV - Battery
-            load_w = grid_w + pv_w - bat_w
+            # ✅ GRID/LOAD (corregido para coincidir con tu script):
+            # IR3041-3042 Ptouser total (import/forward) 0.1W
+            # IR3043-3044 Ptogrid total (export/reverse) 0.1W
+            # IR3045-3046 Ptoload total (load power) 0.1W
+            ir_ptouser = self._read_robust(self.client.read_input_registers, 3041, 2)
+            ir_ptogrid = self._read_robust(self.client.read_input_registers, 3043, 2)
+            ir_ptoload = self._read_robust(self.client.read_input_registers, 3045, 2)
+            if ir_ptouser.isError() or ir_ptogrid.isError() or ir_ptoload.isError():
+                raise ModbusException("Error leyendo Grid/Load (3041/3043/3045)")
+
+            ptouser_w = self._decode_u32_be(ir_ptouser.registers) * 0.1
+            ptogrid_w = self._decode_u32_be(ir_ptogrid.registers) * 0.1
+            ptoload_w = self._decode_u32_be(ir_ptoload.registers) * 0.1
+
+            # Net grid: +import, -export
+            grid_w = ptouser_w - ptogrid_w
+
+            # Load: usa directamente el registro de carga total
+            load_w = ptoload_w
 
             return {
                 "battery_soc_total": int(soc),
