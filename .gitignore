@@ -1,0 +1,6 @@
+
+# Claude / AI assistant artifacts (no publicar — solo el componente)
+CLAUDE.md
+.claude/
+AGENTS.md
+.DS_Store
